@@ -107,10 +107,16 @@ export function downgradeOpenAIReasoningBlocks(messages: AgentMessage[]): AgentM
         nextContent.push(block);
         continue;
       }
+      // OpenAI rejects reasoning signatures in session history - strip them entirely
       if (hasFollowingNonThinkingBlock(assistantMsg.content, i)) {
-        nextContent.push(block);
+        // Keep the block but remove the reasoning signature
+        const { thinkingSignature: _thinkingSignature, ...blockWithoutSignature } =
+          block as unknown as Record<string, unknown>;
+        nextContent.push(blockWithoutSignature as unknown as AssistantContentBlock);
+        changed = true;
         continue;
       }
+      // Drop orphaned reasoning blocks (no following content)
       changed = true;
     }
 
