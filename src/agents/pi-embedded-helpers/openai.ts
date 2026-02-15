@@ -34,7 +34,8 @@ function parseOpenAIReasoningSignature(value: unknown): OpenAIReasoningSignature
   }
   const id = typeof candidate.id === "string" ? candidate.id : "";
   const type = typeof candidate.type === "string" ? candidate.type : "";
-  if (!id.startsWith("rs_")) {
+  // OpenAI uses both "rs_" and "s_" prefixes for reasoning signatures
+  if (!id.startsWith("rs_") && !id.startsWith("s_")) {
     return null;
   }
   if (type === "reasoning" || type.startsWith("reasoning.")) {
