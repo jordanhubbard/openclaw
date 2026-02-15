@@ -1,4 +1,5 @@
 import type { OpenClawConfig } from "../config/config.js";
+import type { ModelRequirements } from "./model-requirements.js";
 import type { FailoverReason } from "./pi-embedded-helpers.js";
 import {
   ensureAuthProfileStore,
@@ -12,6 +13,8 @@ import {
   isFailoverError,
   isTimeoutError,
 } from "./failover-error.js";
+import { loadModelCatalog, findModelInCatalog } from "./model-catalog.js";
+import { scoreModel, describeTier, type ModelScore } from "./model-scoring.js";
 import {
   buildConfiguredAllowlistKeys,
   buildModelAliasIndex,
@@ -217,6 +220,63 @@ function resolveFallbackCandidates(params: {
   return candidates;
 }
 
+/**
+ * Apply intelligent ranking to model candidates based on tier, cost, and requirements.
+ * Returns candidates sorted by score (highest first), with non-viable models filtered out.
+ */
+async function rankCandidatesIntelligently(params: {
+  candidates: ModelCandidate[];
+  cfg: OpenClawConfig;
+  requirements: ModelRequirements;
+}): Promise<ModelCandidate[]> {
+  const catalog = await loadModelCatalog({ config: params.cfg });
+  const providers = params.cfg.models?.providers ?? {};
+
+  // Score each candidate
+  const scored: Array<{ candidate: ModelCandidate; score: ModelScore }> = [];
+  for (const candidate of params.candidates) {
+    const catalogEntry = findModelInCatalog(catalog, candidate.provider, candidate.model);
+    const providerConfig = providers[candidate.provider];
+
+    if (!catalogEntry || !providerConfig) {
+      // Keep candidates not in catalog (e.g., CLI providers) but with low priority
+      scored.push({
+        candidate,
+        score: {
+          provider: candidate.provider,
+          model: candidate.model,
+          score: -1,
+          tier: 4, // HIGH_COST as a fallback
+          meetsRequirements: true,
+          cost: 999,
+        },
+      });
+      continue;
+    }
+
+    const modelScore = scoreModel(catalogEntry, providerConfig, params.requirements);
+    scored.push({ candidate, score: modelScore });
+  }
+
+  // Filter out models that don't meet requirements (score = -1)
+  const viable = scored.filter((s) => s.score.meetsRequirements);
+
+  // Sort by score (highest first)
+  viable.sort((a, b) => b.score.score - a.score.score);
+
+  // Log ranking for debugging
+  if (viable.length > 0) {
+    console.log("[model-routing] Intelligent ranking applied:");
+    for (const { candidate, score } of viable.slice(0, 5)) {
+      console.log(
+        `  ${candidate.provider}/${candidate.model}: score=${score.score.toFixed(0)} tier=${describeTier(score.tier)} cost=${score.cost.toFixed(2)}`,
+      );
+    }
+  }
+
+  return viable.map((s) => s.candidate);
+}
+
 export async function runWithModelFallback<T>(params: {
   cfg: OpenClawConfig | undefined;
   provider: string;
@@ -224,15 +284,32 @@ export async function runWithModelFallback<T>(params: {
   agentDir?: string;
   /** Optional explicit fallbacks list; when provided (even empty), replaces agents.defaults.model.fallbacks. */
   fallbacksOverride?: string[];
+  /** Optional model requirements for intelligent routing */
+  requirements?: ModelRequirements;
   run: (provider: string, model: string) => Promise<T>;
   onError?: ModelFallbackErrorHandler;
 }): Promise<ModelFallbackRunResult<T>> {
-  const candidates = resolveFallbackCandidates({
+  let candidates = resolveFallbackCandidates({
     cfg: params.cfg,
     provider: params.provider,
     model: params.model,
     fallbacksOverride: params.fallbacksOverride,
   });
+
+  // Apply intelligent ranking if enabled and requirements are provided
+  if (params.cfg?.models?.routing?.enabled && params.requirements && params.cfg) {
+    try {
+      candidates = await rankCandidatesIntelligently({
+        candidates,
+        cfg: params.cfg,
+        requirements: params.requirements,
+      });
+    } catch (error) {
+      // If ranking fails, fall back to original candidate order
+      console.warn("[model-routing] Failed to apply intelligent ranking:", error);
+    }
+  }
+
   const authStore = params.cfg
     ? ensureAuthProfileStore(params.agentDir, { allowKeychainPrompt: false })
     : null;
