@@ -60,8 +60,22 @@ export type BedrockDiscoveryConfig = {
   defaultMaxTokens?: number;
 };
 
+export type RoutingConfig = {
+  /** Enable intelligent model routing (default: false) */
+  enabled?: boolean;
+  /** Prefer local providers (vLLM, Ollama) over remote (default: true) */
+  preferLocal?: boolean;
+  /** Require reasoning capability (default: false) */
+  requireReasoning?: boolean;
+  /** Require streaming support (default: true) */
+  requireStreaming?: boolean;
+  /** Cost preference strategy (default: "lowest") */
+  costPreference?: "lowest" | "balanced" | "performance";
+};
+
 export type ModelsConfig = {
   mode?: "merge" | "replace";
   providers?: Record<string, ModelProviderConfig>;
   bedrockDiscovery?: BedrockDiscoveryConfig;
+  routing?: RoutingConfig;
 };

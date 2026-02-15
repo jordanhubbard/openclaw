@@ -81,11 +81,25 @@ export const BedrockDiscoverySchema = z
   .strict()
   .optional();
 
+export const RoutingConfigSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    preferLocal: z.boolean().optional(),
+    requireReasoning: z.boolean().optional(),
+    requireStreaming: z.boolean().optional(),
+    costPreference: z
+      .union([z.literal("lowest"), z.literal("balanced"), z.literal("performance")])
+      .optional(),
+  })
+  .strict()
+  .optional();
+
 export const ModelsConfigSchema = z
   .object({
     mode: z.union([z.literal("merge"), z.literal("replace")]).optional(),
     providers: z.record(z.string(), ModelProviderSchema).optional(),
     bedrockDiscovery: BedrockDiscoverySchema,
+    routing: RoutingConfigSchema,
   })
   .strict()
   .optional();
