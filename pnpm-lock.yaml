@@ -227,6 +227,9 @@ importers:
       oxlint-tsgolint:
         specifier: ^0.13.0
         version: 0.13.0
+      playwright:
+        specifier: ^1.58.2
+        version: 1.58.2
       rolldown:
         specifier: 1.0.0-rc.4
         version: 1.0.0-rc.4
