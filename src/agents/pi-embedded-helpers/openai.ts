@@ -48,6 +48,23 @@ function hasFollowingNonThinkingBlock(
   content: Extract<AgentMessage, { role: "assistant" }>["content"],
   index: number,
 ): boolean {
+  // Check if the immediate next block is another reasoning block
+  // If so, this reasoning block is orphaned (can't have two reasoning items in a row)
+  if (index + 1 < content.length) {
+    const nextBlock = content[index + 1];
+    if (nextBlock && typeof nextBlock === "object") {
+      const nextRecord = nextBlock as OpenAIThinkingBlock;
+      if (nextRecord.type === "thinking") {
+        const nextSignature = parseOpenAIReasoningSignature(nextRecord.thinkingSignature);
+        if (nextSignature) {
+          // Next block is also a reasoning block - this one is orphaned
+          return false;
+        }
+      }
+    }
+  }
+
+  // Otherwise check if there's any non-thinking block after this one
   for (let i = index + 1; i < content.length; i++) {
     const block = content[i];
     if (!block || typeof block !== "object") {
