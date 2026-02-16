@@ -61,11 +61,14 @@ function hasFollowingNonThinkingBlock(
 }
 
 /**
- * OpenAI Responses API can reject transcripts that contain a standalone `reasoning` item id
- * without the required following item.
+ * OpenAI Responses API requires reasoning items to be paired with following content.
  *
- * OpenClaw persists provider-specific reasoning metadata in `thinkingSignature`; if that metadata
- * is incomplete, drop the block to keep history usable.
+ * When replaying sessions, OpenAI rejects reasoning items that have no following content
+ * (e.g., an orphaned reasoning block at the end of a turn).
+ *
+ * This function:
+ * 1. Keeps reasoning signatures (thinkingSignature) when followed by content - they're needed for replay
+ * 2. Drops orphaned reasoning blocks that have no following content to prevent 400 errors
  */
 export function downgradeOpenAIReasoningBlocks(messages: AgentMessage[]): AgentMessage[] {
   const out: AgentMessage[] = [];
@@ -108,13 +111,9 @@ export function downgradeOpenAIReasoningBlocks(messages: AgentMessage[]): AgentM
         nextContent.push(block);
         continue;
       }
-      // OpenAI rejects reasoning signatures in session history - strip them entirely
+      // Keep reasoning signatures when followed by content - they're needed for replay
       if (hasFollowingNonThinkingBlock(assistantMsg.content, i)) {
-        // Keep the block but remove the reasoning signature
-        const { thinkingSignature: _thinkingSignature, ...blockWithoutSignature } =
-          block as unknown as Record<string, unknown>;
-        nextContent.push(blockWithoutSignature as unknown as AssistantContentBlock);
-        changed = true;
+        nextContent.push(block);
         continue;
       }
       // Drop orphaned reasoning blocks (no following content)
