@@ -41,13 +41,16 @@ export async function setupCommand(
 
   const workspace = desiredWorkspace ?? defaults.workspace ?? DEFAULT_AGENT_WORKSPACE_DIR;
 
+  // Store workspace path with tilde notation for portability across users and OSes
+  const workspaceForConfig = shortenHomePath(workspace);
+
   const next: OpenClawConfig = {
     ...cfg,
     agents: {
       ...cfg.agents,
       defaults: {
         ...defaults,
-        workspace,
+        workspace: workspaceForConfig,
       },
     },
   };

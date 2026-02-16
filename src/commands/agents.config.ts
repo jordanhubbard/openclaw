@@ -11,6 +11,7 @@ import {
   parseIdentityMarkdown as parseIdentityMarkdownFile,
 } from "../agents/identity-file.js";
 import { normalizeAgentId } from "../routing/session-key.js";
+import { shortenHomePath } from "../utils.js";
 
 export type AgentSummary = {
   id: string;
@@ -144,11 +145,16 @@ export function applyAgentConfig(
   const list = listAgentEntries(cfg);
   const index = findAgentEntryIndex(list, agentId);
   const base = index >= 0 ? list[index] : { id: agentId };
+
+  // Store paths with tilde notation for portability across users and OSes
+  const workspace = params.workspace ? shortenHomePath(params.workspace) : undefined;
+  const agentDir = params.agentDir ? shortenHomePath(params.agentDir) : undefined;
+
   const nextEntry: AgentEntry = {
     ...base,
     ...(name ? { name } : {}),
-    ...(params.workspace ? { workspace: params.workspace } : {}),
-    ...(params.agentDir ? { agentDir: params.agentDir } : {}),
+    ...(workspace ? { workspace } : {}),
+    ...(agentDir ? { agentDir } : {}),
     ...(params.model ? { model: params.model } : {}),
   };
   const nextList = [...list];
