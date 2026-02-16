@@ -247,7 +247,7 @@ export function createProcessSupervisor(): ProcessSupervisor {
         pid: adapter.pid,
         startedAtMs,
         stdin: adapter.stdin,
-        wait: async () => await waitPromise,
+        wait: () => waitPromise,
         cancel: (reason = "manual-cancel") => {
           requestCancel(reason);
         },
