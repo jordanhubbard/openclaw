@@ -35,7 +35,12 @@ import {
 } from "../../utils/message-channel.js";
 import { stripHeartbeatToken } from "../heartbeat.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../tokens.js";
-import { buildThreadingToolContext, resolveEnforceFinalTag } from "./agent-runner-utils.js";
+import {
+  buildEmbeddedContextFromTemplate,
+  buildTemplateSenderContext,
+  resolveEnforceFinalTag,
+  resolveRunAuthProfile,
+} from "./agent-runner-utils.js";
 import { type BlockReplyPipeline } from "./block-reply-pipeline.js";
 import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
 
@@ -260,32 +265,20 @@ export async function runAgentTurnWithFallback(params: {
               }
             })();
           }
-          const authProfileId =
-            provider === params.followupRun.run.provider
-              ? params.followupRun.run.authProfileId
-              : undefined;
+          const authProfile = resolveRunAuthProfile(params.followupRun.run, provider);
+          const embeddedContext = buildEmbeddedContextFromTemplate({
+            run: params.followupRun.run,
+            sessionCtx: params.sessionCtx,
+            hasRepliedRef: params.opts?.hasRepliedRef,
+          });
+          const senderContext = buildTemplateSenderContext(params.sessionCtx);
           return runEmbeddedPiAgent({
-            sessionId: params.followupRun.run.sessionId,
-            sessionKey: params.sessionKey,
-            agentId: params.followupRun.run.agentId,
-            messageProvider: params.sessionCtx.Provider?.trim().toLowerCase() || undefined,
-            agentAccountId: params.sessionCtx.AccountId,
-            messageTo: params.sessionCtx.OriginatingTo ?? params.sessionCtx.To,
-            messageThreadId: params.sessionCtx.MessageThreadId ?? undefined,
+            ...embeddedContext,
             groupId: resolveGroupSessionKey(params.sessionCtx)?.id,
             groupChannel:
               params.sessionCtx.GroupChannel?.trim() ?? params.sessionCtx.GroupSubject?.trim(),
             groupSpace: params.sessionCtx.GroupSpace?.trim() ?? undefined,
-            senderId: params.sessionCtx.SenderId?.trim() || undefined,
-            senderName: params.sessionCtx.SenderName?.trim() || undefined,
-            senderUsername: params.sessionCtx.SenderUsername?.trim() || undefined,
-            senderE164: params.sessionCtx.SenderE164?.trim() || undefined,
-            // Provider threading context for tool auto-injection
-            ...buildThreadingToolContext({
-              sessionCtx: params.sessionCtx,
-              config: params.followupRun.run.config,
-              hasRepliedRef: params.opts?.hasRepliedRef,
-            }),
+            ...senderContext,
             sessionFile: params.followupRun.run.sessionFile,
             workspaceDir: params.followupRun.run.workspaceDir,
             agentDir: params.followupRun.run.agentDir,
@@ -297,10 +290,7 @@ export async function runAgentTurnWithFallback(params: {
             enforceFinalTag: resolveEnforceFinalTag(params.followupRun.run, provider),
             provider,
             model,
-            authProfileId,
-            authProfileIdSource: authProfileId
-              ? params.followupRun.run.authProfileIdSource
-              : undefined,
+            ...authProfile,
             thinkLevel: params.followupRun.run.thinkLevel,
             verboseLevel: params.followupRun.run.verboseLevel,
             reasoningLevel: params.followupRun.run.reasoningLevel,
@@ -315,6 +305,7 @@ export async function runAgentTurnWithFallback(params: {
               }
               return isMarkdownCapableMessageChannel(channel) ? "markdown" : "plain";
             })(),
+            suppressToolErrorWarnings: params.opts?.suppressToolErrorWarnings,
             bashElevated: params.followupRun.run.bashElevated,
             timeoutMs: params.followupRun.run.timeoutMs,
             runId,
@@ -336,6 +327,7 @@ export async function runAgentTurnWithFallback(params: {
               : undefined,
             onAssistantMessageStart: async () => {
               await params.typingSignals.signalMessageStart();
+              await params.opts?.onAssistantMessageStart?.();
             },
             onReasoningStream:
               params.typingSignals.shouldStartOnReasoning || params.opts?.onReasoningStream
@@ -347,13 +339,16 @@ export async function runAgentTurnWithFallback(params: {
                     });
                   }
                 : undefined,
+            onReasoningEnd: params.opts?.onReasoningEnd,
             onAgentEvent: async (evt) => {
               // Trigger typing when tools start executing.
               // Must await to ensure typing indicator starts before tool summaries are emitted.
               if (evt.stream === "tool") {
                 const phase = typeof evt.data.phase === "string" ? evt.data.phase : "";
+                const name = typeof evt.data.name === "string" ? evt.data.name : undefined;
                 if (phase === "start" || phase === "update") {
                   await params.typingSignals.signalToolStart();
+                  await params.opts?.onToolStart?.({ name, phase });
                 }
               }
               // Track auto-compaction completion
