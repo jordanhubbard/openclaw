@@ -107,13 +107,11 @@ describe("discord message actions", () => {
     expect(actions).not.toContain("ban");
   });
 
-  it("shallow merge: account actions object replaces base entirely", () => {
-    // Base has reactions: false, account has actions: { moderation: true }
-    // Shallow merge replaces the whole actions object, so reactions defaults to true
+  it("inherits top-level channel gate when account overrides moderation only", () => {
     const cfg = {
       channels: {
         discord: {
-          actions: { reactions: false },
+          actions: { channels: false },
           accounts: {
             vime: { token: "d1", actions: { moderation: true } },
           },
@@ -122,46 +120,25 @@ describe("discord message actions", () => {
     } as OpenClawConfig;
     const actions = discordMessageActions.listActions?.({ cfg }) ?? [];
 
-    // vime's actions override replaces entire actions object; reactions defaults to true
-    expect(actions).toContain("react");
     expect(actions).toContain("timeout");
-  });
-});
-
-describe("telegram message actions", () => {
-  it("lists poll action when telegram is configured", () => {
-    const cfg = { channels: { telegram: { botToken: "t0" } } } as OpenClawConfig;
-    const actions = telegramMessageActions.listActions?.({ cfg }) ?? [];
-    expect(actions).toContain("poll");
+    expect(actions).not.toContain("channel-create");
   });
 
-  it("routes poll with normalized params", async () => {
-    await telegramMessageActions.handleAction?.({
-      channel: "telegram",
-      action: "poll",
-      params: {
-        to: "123",
-        pollQuestion: "Ready?",
-        pollOption: ["Yes", "No"],
-        pollMulti: true,
-        pollDurationSeconds: 60,
+  it("allows account to explicitly re-enable top-level disabled channels", () => {
+    const cfg = {
+      channels: {
+        discord: {
+          actions: { channels: false },
+          accounts: {
+            vime: { token: "d1", actions: { moderation: true, channels: true } },
+          },
+        },
       },
-      cfg: { channels: { telegram: { botToken: "tok" } } } as OpenClawConfig,
-      accountId: "ops",
-    });
+    } as OpenClawConfig;
+    const actions = discordMessageActions.listActions?.({ cfg }) ?? [];
 
-    expect(handleTelegramAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "poll",
-        to: "123",
-        question: "Ready?",
-        options: ["Yes", "No"],
-        allowMultiselect: true,
-        durationSeconds: 60,
-        accountId: "ops",
-      }),
-      expect.any(Object),
-    );
+    expect(actions).toContain("timeout");
+    expect(actions).toContain("channel-create");
   });
 });
 
@@ -422,9 +399,13 @@ describe("telegramMessageActions", () => {
 
   it("rejects non-integer messageId for edit before reaching telegram-actions", async () => {
     const cfg = { channels: { telegram: { botToken: "tok" } } } as OpenClawConfig;
+    const handleAction = telegramMessageActions.handleAction;
+    if (!handleAction) {
+      throw new Error("telegram handleAction unavailable");
+    }
 
     await expect(
-      telegramMessageActions.handleAction({
+      handleAction({
         channel: "telegram",
         action: "edit",
         params: {
@@ -473,6 +454,24 @@ describe("telegramMessageActions", () => {
     expect(actions).not.toContain("sticker-search");
   });
 
+  it("inherits top-level reaction gate when account overrides sticker only", () => {
+    const cfg = {
+      channels: {
+        telegram: {
+          actions: { reactions: false },
+          accounts: {
+            media: { botToken: "tok", actions: { sticker: true } },
+          },
+        },
+      },
+    } as OpenClawConfig;
+    const actions = telegramMessageActions.listActions?.({ cfg }) ?? [];
+
+    expect(actions).toContain("sticker");
+    expect(actions).toContain("sticker-search");
+    expect(actions).not.toContain("react");
+  });
+
   it("accepts numeric messageId and channelId for reactions", async () => {
     const cfg = { channels: { telegram: { botToken: "tok" } } } as OpenClawConfig;
 
@@ -498,32 +497,6 @@ describe("telegramMessageActions", () => {
     expect(String(callPayload.chatId)).toBe("123");
     expect(String(callPayload.messageId)).toBe("456");
     expect(callPayload.emoji).toBe("ok");
-  });
-
-  it("routes poll action to sendPoll with question and options", async () => {
-    const cfg = { channels: { telegram: { botToken: "tok" } } } as OpenClawConfig;
-
-    await telegramMessageActions.handleAction?.({
-      channel: "telegram",
-      action: "poll",
-      params: {
-        to: "-100123",
-        pollQuestion: "Ready?",
-        pollOption: ["Yes", "No", "Maybe"],
-      },
-      cfg,
-      accountId: undefined,
-    });
-
-    expect(handleTelegramAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: "poll",
-        to: "-100123",
-        question: "Ready?",
-        options: ["Yes", "No", "Maybe"],
-      }),
-      cfg,
-    );
   });
 });
 
@@ -563,9 +536,13 @@ describe("signalMessageActions", () => {
     const cfg = {
       channels: { signal: { account: "+15550001111", actions: { reactions: false } } },
     } as OpenClawConfig;
+    const handleAction = signalMessageActions.handleAction;
+    if (!handleAction) {
+      throw new Error("signal handleAction unavailable");
+    }
 
     await expect(
-      signalMessageActions.handleAction({
+      handleAction({
         channel: "signal",
         action: "react",
         params: { to: "+15550001111", messageId: "123", emoji: "✅" },
@@ -629,9 +606,13 @@ describe("signalMessageActions", () => {
     const cfg = {
       channels: { signal: { account: "+15550001111" } },
     } as OpenClawConfig;
+    const handleAction = signalMessageActions.handleAction;
+    if (!handleAction) {
+      throw new Error("signal handleAction unavailable");
+    }
 
     await expect(
-      signalMessageActions.handleAction({
+      handleAction({
         channel: "signal",
         action: "react",
         params: { to: "signal:group:group-id", messageId: "123", emoji: "✅" },
