@@ -2,6 +2,8 @@
 // prefixed to the next prompt. We intentionally avoid persistence to keep
 // events ephemeral. Events are session-scoped and require an explicit key.
 
+import { resolveMainSessionKeyFromConfig } from "../config/sessions.js";
+
 export type SystemEvent = { text: string; ts: number; contextKey?: string | null };
 
 const MAX_EVENTS = 20;
@@ -111,6 +113,18 @@ export function peekSystemEvents(sessionKey: string): string[] {
 export function hasSystemEvents(sessionKey: string) {
   const key = requireSessionKey(sessionKey);
   return (queues.get(key)?.queue.length ?? 0) > 0;
+}
+
+/**
+ * Enqueue a system event directly into the main session, ensuring it runs in
+ * the full main-session context with full plugin access when drained.
+ */
+export function enqueueMainSessionSystemEvent(
+  text: string,
+  options?: Omit<SystemEventOptions, "sessionKey">,
+): void {
+  const sessionKey = resolveMainSessionKeyFromConfig();
+  enqueueSystemEvent(text, { ...options, sessionKey });
 }
 
 export function resetSystemEventsForTest() {
