@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import { BLUEBUBBLES_GROUP_ACTIONS } from "../../channels/plugins/bluebubbles-actions.js";
+import { listChannelPlugins } from "../../channels/plugins/index.js";
 import {
   listChannelMessageActions,
   supportsChannelMessageButtons,
@@ -21,7 +22,12 @@ import { stripReasoningTagsFromText } from "../../shared/text/reasoning-tags.js"
 import { normalizeMessageChannel } from "../../utils/message-channel.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { listChannelSupportedActions } from "../channel-tools.js";
-import { channelTargetSchema, channelTargetsSchema, stringEnum } from "../schema/typebox.js";
+import {
+  channelTargetSchema,
+  channelTargetsSchema,
+  optionalStringEnum,
+  stringEnum,
+} from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
 import { resolveGatewayOptions } from "./gateway.js";
@@ -39,9 +45,12 @@ const EXPLICIT_TARGET_ACTIONS = new Set<ChannelMessageActionName>([
 function actionNeedsExplicitTarget(action: ChannelMessageActionName): boolean {
   return EXPLICIT_TARGET_ACTIONS.has(action);
 }
-function buildRoutingSchema() {
+function buildRoutingSchema(knownChannels?: readonly string[]) {
   return {
-    channel: Type.Optional(Type.String()),
+    channel:
+      knownChannels && knownChannels.length > 0
+        ? optionalStringEnum(knownChannels)
+        : Type.Optional(Type.String()),
     target: Type.Optional(channelTargetSchema({ description: "Target channel/user id or name." })),
     targets: Type.Optional(channelTargetsSchema()),
     accountId: Type.Optional(Type.String()),
@@ -383,9 +392,10 @@ function buildMessageToolSchemaProps(options: {
   includeButtons: boolean;
   includeCards: boolean;
   includeComponents: boolean;
+  knownChannels?: readonly string[];
 }) {
   return {
-    ...buildRoutingSchema(),
+    ...buildRoutingSchema(options.knownChannels),
     ...buildSendSchema(options),
     ...buildReactionSchema(),
     ...buildFetchSchema(),
@@ -403,7 +413,12 @@ function buildMessageToolSchemaProps(options: {
 
 function buildMessageToolSchemaFromActions(
   actions: readonly string[],
-  options: { includeButtons: boolean; includeCards: boolean; includeComponents: boolean },
+  options: {
+    includeButtons: boolean;
+    includeCards: boolean;
+    includeComponents: boolean;
+    knownChannels?: readonly string[];
+  },
 ) {
   const props = buildMessageToolSchemaProps(options);
   return Type.Object({
@@ -479,10 +494,12 @@ function buildMessageToolSchema(params: {
     ? supportsChannelMessageCardsForChannel({ cfg: params.cfg, channel: currentChannel })
     : supportsChannelMessageCards(params.cfg);
   const includeComponents = resolveIncludeComponents(params);
+  const knownChannels = listChannelPlugins().map((p) => p.id);
   return buildMessageToolSchemaFromActions(actions.length > 0 ? actions : ["send"], {
     includeButtons,
     includeCards,
     includeComponents,
+    knownChannels: knownChannels.length > 0 ? knownChannels : undefined,
   });
 }
 
