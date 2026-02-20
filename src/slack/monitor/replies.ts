@@ -3,7 +3,12 @@ import { chunkMarkdownTextWithMode } from "../../auto-reply/chunk.js";
 import { createReplyReferencePlanner } from "../../auto-reply/reply/reply-reference.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../../auto-reply/tokens.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
+import { loadConfig } from "../../config/config.js";
 import type { MarkdownTableMode } from "../../config/types.base.js";
+import {
+  getDefaultMediaLocalRoots,
+  getAgentScopedMediaLocalRoots,
+} from "../../media/local-roots.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { markdownToSlackMrkdwnChunks } from "../format.js";
 import { sendMessageSlack } from "../send.js";
@@ -16,7 +21,13 @@ export async function deliverReplies(params: {
   runtime: RuntimeEnv;
   textLimit: number;
   replyThreadTs?: string;
+  agentId?: string;
 }) {
+  const { agentId } = params;
+  const cfg = loadConfig();
+  const mediaLocalRoots = agentId
+    ? getAgentScopedMediaLocalRoots(cfg, agentId)
+    : getDefaultMediaLocalRoots();
   for (const payload of params.replies) {
     const threadTs = payload.replyToId ?? params.replyThreadTs;
     const mediaList = payload.mediaUrls ?? (payload.mediaUrl ? [payload.mediaUrl] : []);
@@ -45,6 +56,7 @@ export async function deliverReplies(params: {
           mediaUrl,
           threadTs,
           accountId: params.accountId,
+          mediaLocalRoots,
         });
       }
     }

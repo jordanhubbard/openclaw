@@ -169,6 +169,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
       runtime,
       textLimit: ctx.textLimit,
       replyThreadTs,
+      agentId: route.agentId,
     });
     replyPlan.markSent();
   };
@@ -285,6 +286,7 @@ export async function dispatchPreparedSlackMessage(prepared: PreparedSlackMessag
         runtime,
         textLimit: ctx.textLimit,
         replyThreadTs,
+        agentId: route.agentId,
       });
       replyPlan.markSent();
     },
